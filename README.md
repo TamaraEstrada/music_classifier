@@ -172,7 +172,7 @@ When classifying a new audio file:
 
 ## 3. Understanding the Results
 
-Your model achieved 73.35% accuracy, which means:
+Model achieved 73.35% accuracy, which means:
 - It correctly classified about 234 out of 319 test samples
 - This is good for a 10-class problem (random guessing would be 10%)
 - Common errors might include:
