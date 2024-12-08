@@ -137,6 +137,50 @@ class SpotifyAPI:
         
         return json_result[0]
 
+
+def get_audio_features(token, track_id):
+    """Get audio features for a track from Spotify API."""
+    url = f"https://api.spotify.com/v1/audio-features/{track_id}"
+    headers = {"Authorization": "Bearer " + token}
+    
+    result = get(url, headers=headers)
+    
+    if result.status_code != 200:
+        print(f"Error fetching audio features: {result.status_code}")
+        return None
+        
+    return json.loads(result.content)
+
+def get_track_genre(audio_features):
+    """Determine likely genre based on audio features."""
+    if not audio_features:
+        return None
+        
+    # Create a simple genre classification based on audio features
+    features = {
+        'danceability': audio_features['danceability'],
+        'energy': audio_features['energy'],
+        'valence': audio_features['valence'],
+        'tempo': audio_features['tempo'],
+        'instrumentalness': audio_features['instrumentalness'],
+        'acousticness': audio_features['acousticness']
+    }
+    
+    # Simple rule-based genre classification
+    if features['instrumentalness'] > 0.8:
+        return 'classical'
+    elif features['acousticness'] > 0.8:
+        return 'acoustic'
+    elif features['energy'] > 0.8 and features['tempo'] > 120:
+        return 'rock'
+    elif features['danceability'] > 0.8:
+        return 'pop'
+    elif features['energy'] < 0.4 and features['valence'] < 0.4:
+        return 'ambient'
+    elif features['energy'] > 0.7 and features['danceability'] > 0.7:
+        return 'electronic'
+    else:
+        return 'alternative'
 # Create a single instance
 spotify = SpotifyAPI()
 
@@ -152,3 +196,6 @@ def get_playlist_tracks(token, playlist_id):
 
 def search_genre(token, genre):
     return spotify.search_genre(token, genre)
+
+def get_audio_features(token, track_id):
+    return spotify.get_audio_features(token, track_id)

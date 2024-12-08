@@ -6,27 +6,64 @@ import os
 from auth_server import get_spotify_auth_code
 import webbrowser
 import queue
+from spotify_api import get_token, get_user_playlists, get_playlist_tracks, search_genre, get_audio_features, get_track_genre
 
+def process_playlist_tracks(playlist_tracks, token):
+    """Process tracks using Spotify's audio features API."""
+    genre_counts = {}
+    processed_tracks = 0
+    
+    print("\nAnalyzing tracks:")
+    for i, track in enumerate(playlist_tracks, 1):
+        try:
+            track_id = track['id']
+            track_name = track['name']
+            artists = ", ".join([artist['name'] for artist in track['artists']])
+            
+            print(f"  {i}. {track_name} by {artists}: ", end='', flush=True)
+            
+            # Get audio features for the track
+            audio_features = get_audio_features(token, track_id)
+            if audio_features:
+                genre = get_track_genre(audio_features)
+                if genre:
+                    genre_counts[genre] = genre_counts.get(genre, 0) + 1
+                    processed_tracks += 1
+                    print(f"Classified as {genre}")
+                else:
+                    print("Could not determine genre")
+            else:
+                print("Could not fetch audio features")
+                
+        except Exception as e:
+            print(f"Error: {str(e)}")
+            continue
+    
+    return genre_counts, processed_tracks
+
+def authenticate_spotify():
+    """Authenticate with Spotify and return access token"""
+    client_id = os.getenv("CLIENT_ID")
+    client_secret = os.getenv("CLIENT_SECRET")
+    
+    if not client_id or not client_secret:
+        raise ValueError("CLIENT_ID and CLIENT_SECRET must be set in environment variables")
+    
+    print("Opening browser for Spotify authentication...")
+    try:
+        auth_code, redirect_uri = get_spotify_auth_code(client_id)
+        print("Authentication successful!")
+        return get_token(auth_code=auth_code, redirect_uri=redirect_uri)
+    except Exception as e:
+        print(f"Authentication failed: {str(e)}")
+        return None
+
+
+# Before the line that calls process_playlist_tracks, the main function should look like this:
 def main():
     # Configuration
     data_directory = "/Users/tamaraestrada/Desktop/music_genre_classifier/Data/genres_original"
     features_file = "dataset.dat"
-
-    # Extract features if needed
-    if not os.path.exists(features_file):
-        print("Extracting features...")
-        extractor = FeatureExtractor(data_directory)
-        extractor.extract_features(features_file)
-
-    # Train and evaluate model
-    print("Training model...")
-    classifier = KNNClassifier(k=5)
-    train_size, test_size = classifier.load_dataset(features_file)
-    print(f"Training set size: {train_size}")
-    print(f"Test set size: {test_size}")
-
-    accuracy = classifier.evaluate()
-    print(f"Model accuracy: {accuracy:.2%}")
 
     # Get user's playlist and recommend songs
     print("Opening browser for Spotify authentication...")
@@ -68,52 +105,38 @@ def main():
         print("No tracks found in the selected playlist.")
         return
 
-    # Retrieve the tracks from the selected playlist
-    playlist_tracks = get_playlist_tracks(token, selected_playlist['id'])
+    # Process the tracks using audio features
+    print(f"\nAnalyzing {len(playlist_tracks)} tracks from '{selected_playlist['name']}'...")
+    genre_counts, processed_tracks = process_playlist_tracks(playlist_tracks, token)  # Changed this line
 
-    # Classify the songs in the playlist and determine the majority genre
-    genre_counts = {}
-    extractor = FeatureExtractor(data_directory)
-    for track in playlist_tracks:
-        try:
-            song_features = extractor.extract_features_for_song(track['preview_url'])
-            genre = classifier.predict(song_features)
-            genre_counts[genre] = genre_counts.get(genre, 0) + 1
-        except Exception as e:
-            print(f"Error processing '{track['name']}': {str(e)}")
+    if processed_tracks == 0:
+        print("\nCould not analyze any tracks in the playlist.")
+        return
 
-    majority_genre = max(genre_counts, key=genre_counts.get)
-
-    # Recommend songs in the majority genre
-    recommended_songs = recommend_songs(token, majority_genre)
-
-    # Present the recommended songs to the user
-    print(f"Recommended songs in the '{genre_mapping[majority_genre]}' genre:")
-    for song in recommended_songs:
-        print(song["name"])
-
-def authenticate_spotify():
-    client_id = os.getenv("CLIENT_ID")
-    client_secret = os.getenv("CLIENT_SECRET")
+    print(f"\nSuccessfully analyzed {processed_tracks} tracks")
     
-    if not client_id or not client_secret:
-        raise ValueError("CLIENT_ID and CLIENT_SECRET must be set in environment variables")
+    # Find the majority genre
+    majority_genre = max(genre_counts.items(), key=lambda x: x[1])[0]
+    total_tracks = sum(genre_counts.values())
     
-    print("Opening browser for Spotify authentication...")
-    try:
-        auth_code, redirect_uri = get_spotify_auth_code(client_id)
-        print("Authentication successful!")
-        return get_token(auth_code=auth_code, redirect_uri=redirect_uri)
-    except queue.Empty:
-        print("Authentication timed out. Please try again.")
-        return None
-    except Exception as e:
-        print(f"Authentication failed: {str(e)}")
-        return None
+    print("\nGenre distribution:")
+    for genre, count in sorted(genre_counts.items(), key=lambda x: x[1], reverse=True):
+        percentage = (count / total_tracks) * 100
+        print(f"{genre}: {count} tracks ({percentage:.1f}%)")
     
-def recommend_songs(token, genre):
-    recommended_songs = search_genre(token, genre)
-    return recommended_songs
+    print(f"\nDominant genre: {majority_genre}")
+
+    # Get recommendations
+    print(f"\nFinding recommendations based on {majority_genre}...")
+    recommended_tracks = search_genre(token, majority_genre)
+    
+    if recommended_tracks:
+        print("\nRecommended tracks:")
+        artists = ", ".join([artist['name'] for artist in recommended_tracks['artists']])
+        print(f"- {recommended_tracks['name']} by {artists}")
+    else:
+        print("No recommendations found.")
+
 
 if __name__ == "__main__":
     main()
