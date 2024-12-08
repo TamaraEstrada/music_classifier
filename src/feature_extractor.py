@@ -13,13 +13,25 @@ class FeatureExtractor:
     def train_hmm_model(self):
         """Train an HMM model using the training data."""
         # Load the MFCC features for the training data
-        X_train = self.load_mfcc_features(training_data_path)
+        X_train = self.load_mfcc_features("/Users/tamaraestrada/Desktop/music_genre_classifier/dataset.dat")
 
         # Train the HMM model
         model = hmm.GaussianHMM(n_components=10, covariance_type="diag", n_iter=1000)
         model.fit(X_train)
 
         return model
+    
+    def load_mfcc_features(self, file_path):
+        """Load MFCC features from the binary file."""
+        mfcc_features = []
+        with open(file_path, 'rb') as f:
+            while True:
+                try:
+                    mean_matrix, covariance, _ = pickle.load(f)
+                    mfcc_features.append((mean_matrix, covariance))
+                except EOFError:
+                    break
+        return np.array(mfcc_features)
 
     def extract_features(self, output_file="dataset.dat"):
         """Extract MFCC features from audio files and save to binary file."""

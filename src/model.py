@@ -2,7 +2,6 @@ import numpy as np
 import operator
 import pickle
 import random
-from src.lyrical_analyzer import LyricalAnalyzer
 
 class KNNClassifier:
     def __init__(self, k=5):
