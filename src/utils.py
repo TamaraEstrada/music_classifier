@@ -6,4 +6,4 @@ def create_genre_mapping(directory):
     results = defaultdict(int)
     for i, folder in enumerate(os.listdir(directory), 1):
         results[i] = folder
-    return results
+    return results 
