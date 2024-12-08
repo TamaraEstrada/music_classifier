@@ -1,1 +1,6 @@
 lyrical_features.dat
+# Data files
+Data/
+*.wav
+*.png
+*.dat
