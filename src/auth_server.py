@@ -5,13 +5,6 @@ from urllib.parse import urlparse, parse_qs
 import threading
 import queue
 
-import http.server
-import socketserver
-import webbrowser
-from urllib.parse import urlparse, parse_qs
-import threading
-import queue
-
 class OAuthHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, auth_code_queue, *args, **kwargs):
         self.auth_code_queue = auth_code_queue
@@ -21,7 +14,6 @@ class OAuthHandler(http.server.SimpleHTTPRequestHandler):
         """Handle the callback from Spotify"""
         query_components = parse_qs(urlparse(self.path).query)
         
-        # Send a response to the browser
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
@@ -42,7 +34,7 @@ class OAuthHandler(http.server.SimpleHTTPRequestHandler):
             <p>No authorization code received.</p>
             </body></html>
             """
-            
+        
         self.wfile.write(response.encode('utf-8'))
 
 def get_spotify_auth_code(client_id):
@@ -53,7 +45,7 @@ def get_spotify_auth_code(client_id):
     # Create handler with access to the queue
     handler = lambda *args, **kwargs: OAuthHandler(auth_code_queue, *args, **kwargs)
     
-    # Start server in a separate thread
+    # Start server
     server = socketserver.TCPServer(("", PORT), handler)
     server_thread = threading.Thread(target=server.serve_forever)
     server_thread.daemon = True
@@ -61,20 +53,25 @@ def get_spotify_auth_code(client_id):
     
     # Construct and open the authorization URL
     redirect_uri = f"http://localhost:{PORT}/callback"
+    scopes = [
+        "user-library-read",
+        "user-read-private",
+        "playlist-read-private",
+        "playlist-read-collaborative"
+    ]
+    
     auth_url = (
         "https://accounts.spotify.com/authorize"
         f"?client_id={client_id}"
         "&response_type=code"
         f"&redirect_uri={redirect_uri}"
-        "&scope=user-library-read user-read-private user-read-email "
-        "user-read-playback-state user-read-currently-playing playlist-read-private"
+        f"&scope={' '.join(scopes)}"
     )
     
     webbrowser.open(auth_url)
     
     try:
-        # Wait for the authorization code
-        auth_code = auth_code_queue.get(timeout=300)  # 5 minute timeout
+        auth_code = auth_code_queue.get(timeout=300)
         return auth_code, redirect_uri
     finally:
         server.shutdown()

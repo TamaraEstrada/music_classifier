@@ -1,45 +1,8 @@
-from feature_extractor import FeatureExtractor
-from model import KNNClassifier
-from utils import create_genre_mapping
-from spotify_api import get_token, get_user_playlists, get_playlist_tracks, search_genre
-import os
+from spotify_api import get_token, get_user_playlists, get_playlist_tracks
 from auth_server import get_spotify_auth_code
-import webbrowser
-import queue
-from spotify_api import get_token, get_user_playlists, get_playlist_tracks, search_genre, get_audio_features, get_track_genre
-
-def process_playlist_tracks(playlist_tracks, token):
-    """Process tracks using Spotify's audio features API."""
-    genre_counts = {}
-    processed_tracks = 0
-    
-    print("\nAnalyzing tracks:")
-    for i, track in enumerate(playlist_tracks, 1):
-        try:
-            track_id = track['id']
-            track_name = track['name']
-            artists = ", ".join([artist['name'] for artist in track['artists']])
-            
-            print(f"  {i}. {track_name} by {artists}: ", end='', flush=True)
-            
-            # Get audio features for the track
-            audio_features = get_audio_features(token, track_id)
-            if audio_features:
-                genre = get_track_genre(audio_features)
-                if genre:
-                    genre_counts[genre] = genre_counts.get(genre, 0) + 1
-                    processed_tracks += 1
-                    print(f"Classified as {genre}")
-                else:
-                    print("Could not determine genre")
-            else:
-                print("Could not fetch audio features")
-                
-        except Exception as e:
-            print(f"Error: {str(e)}")
-            continue
-    
-    return genre_counts, processed_tracks
+from genre_classifier import process_playlist_tracks
+import os
+from genre_classifier import process_playlist_tracks, get_recommendations, print_debug_info
 
 def authenticate_spotify():
     """Authenticate with Spotify and return access token"""
@@ -58,15 +21,8 @@ def authenticate_spotify():
         print(f"Authentication failed: {str(e)}")
         return None
 
-
-# Before the line that calls process_playlist_tracks, the main function should look like this:
 def main():
-    # Configuration
-    data_directory = "/Users/tamaraestrada/Desktop/music_genre_classifier/Data/genres_original"
-    features_file = "dataset.dat"
-
     # Get user's playlist and recommend songs
-    print("Opening browser for Spotify authentication...")
     token = authenticate_spotify()
     
     if not token:
@@ -98,45 +54,61 @@ def main():
     selected_playlist = playlists[playlist_index - 1]
     print(f"\nSelected playlist: {selected_playlist['name']}")
 
-    # Retrieve the tracks from the selected playlist
+    # Retrieve and analyze the tracks
     playlist_tracks = get_playlist_tracks(token, selected_playlist['id'])
     
     if not playlist_tracks:
         print("No tracks found in the selected playlist.")
         return
 
-    # Process the tracks using audio features
     print(f"\nAnalyzing {len(playlist_tracks)} tracks from '{selected_playlist['name']}'...")
-    genre_counts, processed_tracks = process_playlist_tracks(playlist_tracks, token)  # Changed this line
+    genre_counts, processed_tracks = process_playlist_tracks(playlist_tracks, token)
 
     if processed_tracks == 0:
         print("\nCould not analyze any tracks in the playlist.")
         return
 
+    # Show results
     print(f"\nSuccessfully analyzed {processed_tracks} tracks")
     
-    # Find the majority genre
-    majority_genre = max(genre_counts.items(), key=lambda x: x[1])[0]
-    total_tracks = sum(genre_counts.values())
-    
     print("\nGenre distribution:")
+    total_tracks = sum(genre_counts.values())
     for genre, count in sorted(genre_counts.items(), key=lambda x: x[1], reverse=True):
         percentage = (count / total_tracks) * 100
         print(f"{genre}: {count} tracks ({percentage:.1f}%)")
-    
+
+    # Calculate majority genre
+    majority_genre = max(genre_counts.items(), key=lambda x: x[1])[0]
     print(f"\nDominant genre: {majority_genre}")
-
-    # Get recommendations
-    print(f"\nFinding recommendations based on {majority_genre}...")
-    recommended_tracks = search_genre(token, majority_genre)
     
-    if recommended_tracks:
+    # Get recommendations
+    print("\nAnalyzing playlist for recommendations...")
+    print_debug_info(token, playlist_tracks, majority_genre)
+    
+    print("\nFinding recommendations based on your playlist...")
+    recommendations = get_recommendations(token, playlist_tracks, majority_genre)
+    
+    if recommendations:
         print("\nRecommended tracks:")
-        artists = ", ".join([artist['name'] for artist in recommended_tracks['artists']])
-        print(f"- {recommended_tracks['name']} by {artists}")
+        for i, track in enumerate(recommendations, 1):
+            artists = ", ".join(artist['name'] for artist in track['artists'])
+            print(f"{i}. {track['name']} by {artists}")
+            
+            # Add Spotify link if available
+            if track.get('external_urls', {}).get('spotify'):
+                print(f"   ▶ Listen: {track['external_urls']['spotify']}")
+            
+            # Add popularity score
+            if 'popularity' in track:
+                print(f"   ⭐ Popularity: {track['popularity']}/100")
+            
+            # Add preview URL if available
+            if track.get('preview_url'):
+                print(f"   🎵 Preview: {track['preview_url']}")
+            
+            print()  # Add blank line between recommendations
     else:
-        print("No recommendations found.")
-
+        print("\nNo recommendations found. Try a different playlist or genre.")
 
 if __name__ == "__main__":
     main()

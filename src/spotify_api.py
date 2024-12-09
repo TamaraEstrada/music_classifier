@@ -36,38 +36,29 @@ class SpotifyAPI:
             data = {"grant_type": "client_credentials"}
 
         result = post(url, headers=headers, data=data)
-
-        if result.status_code != 200:
-            raise Exception(f"Failed to get token: {result.status_code}, {result.text}")
-        
         json_result = json.loads(result.content)
-        
-        if 'access_token' not in json_result:
-            raise Exception("The key 'access_token' was not found in the response")
-        
         return json_result["access_token"]
 
     def get_auth_header(self, token):
         return {"Authorization": "Bearer " + token}
 
     def get_user_playlists(self, token):
-        """Get the current user's playlists."""
         url = "https://api.spotify.com/v1/me/playlists"
         headers = self.get_auth_header(token)
         
-        result = get(url, headers=headers)
-        
-        if result.status_code != 200:
-            print(f"Error fetching playlists: {result.status_code}")
-            print(f"Response: {result.text}")
-            return []
-        
         try:
-            json_result = json.loads(result.content)
-            if "items" not in json_result:
-                print("No 'items' found in playlist response")
+            result = get(url, headers=headers)
+            if result.status_code != 200:
+                print(f"Error fetching playlists: {result.status_code}")
+                print(f"Response: {result.text}")
                 return []
                 
+            json_result = json.loads(result.content)
+            if "items" not in json_result:
+                print("No playlists found")
+                return []
+                
+            # Filter out any None values or playlists without names
             playlists = [
                 playlist for playlist in json_result["items"]
                 if playlist is not None and "name" in playlist
@@ -75,127 +66,26 @@ class SpotifyAPI:
             
             return playlists
             
-        except json.JSONDecodeError:
-            print("Error decoding JSON response")
-            return []
         except Exception as e:
-            print(f"Unexpected error fetching playlists: {str(e)}")
+            print(f"Error processing playlists: {str(e)}")
             return []
 
     def get_playlist_tracks(self, token, playlist_id):
-        """Get tracks from a specific playlist."""
         url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
         headers = self.get_auth_header(token)
 
         result = get(url, headers=headers)
+        json_result = json.loads(result.content)["items"]
         
-        if result.status_code != 200:
-            print(f"Error fetching tracks: {result.status_code}")
-            print(f"Response: {result.text}")
-            return []
+        tracks = []
+        for item in json_result:
+            if item["track"]:
+                tracks.append(item["track"])
+        
+        return tracks
 
-        try:
-            json_result = json.loads(result.content)
-            if "items" not in json_result:
-                print("No 'items' found in tracks response")
-                return []
-
-            tracks = []
-            for item in json_result["items"]:
-                if item is not None and "track" in item and item["track"] is not None:
-                    tracks.append(item["track"])
-            
-            return tracks
-            
-        except json.JSONDecodeError:
-            print("Error decoding JSON response")
-            return []
-        except Exception as e:
-            print(f"Unexpected error fetching tracks: {str(e)}")
-            return []
-
-    def search_genre(self, token, genre):
-        """Search for tracks in a specific genre."""
-        url = "https://api.spotify.com/v1/search"
-        headers = self.get_auth_header(token)
-        
-        params = {
-            "q": f"genre:{genre}", 
-            "type": "track",       
-            "limit": 10
-        }
-        
-        query = f"?q={params['q']}&type={params['type']}&limit={params['limit']}"
-        query_url = url + query
-        
-        result = get(query_url, headers=headers)
-        json_result = json.loads(result.content)["tracks"]["items"]
-        
-        if len(json_result) == 0:
-            print("No tracks found")
-            return None
-        
-        return json_result[0]
-
-
-def get_audio_features(token, track_id):
-    """Get audio features for a track from Spotify API."""
-    url = f"https://api.spotify.com/v1/audio-features/{track_id}"
-    headers = {"Authorization": "Bearer " + token}
-    
-    result = get(url, headers=headers)
-    
-    if result.status_code != 200:
-        print(f"Error fetching audio features: {result.status_code}")
-        return None
-        
-    return json.loads(result.content)
-
-def get_track_genre(audio_features):
-    """Determine likely genre based on audio features."""
-    if not audio_features:
-        return None
-        
-    # Create a simple genre classification based on audio features
-    features = {
-        'danceability': audio_features['danceability'],
-        'energy': audio_features['energy'],
-        'valence': audio_features['valence'],
-        'tempo': audio_features['tempo'],
-        'instrumentalness': audio_features['instrumentalness'],
-        'acousticness': audio_features['acousticness']
-    }
-    
-    # Simple rule-based genre classification
-    if features['instrumentalness'] > 0.8:
-        return 'classical'
-    elif features['acousticness'] > 0.8:
-        return 'acoustic'
-    elif features['energy'] > 0.8 and features['tempo'] > 120:
-        return 'rock'
-    elif features['danceability'] > 0.8:
-        return 'pop'
-    elif features['energy'] < 0.4 and features['valence'] < 0.4:
-        return 'ambient'
-    elif features['energy'] > 0.7 and features['danceability'] > 0.7:
-        return 'electronic'
-    else:
-        return 'alternative'
-# Create a single instance
+# Create instance and export functions
 spotify = SpotifyAPI()
-
-# Create module-level functions that use the instance
-def get_token(*args, **kwargs):
-    return spotify.get_token(*args, **kwargs)
-
-def get_user_playlists(token):
-    return spotify.get_user_playlists(token)
-
-def get_playlist_tracks(token, playlist_id):
-    return spotify.get_playlist_tracks(token, playlist_id)
-
-def search_genre(token, genre):
-    return spotify.search_genre(token, genre)
-
-def get_audio_features(token, track_id):
-    return spotify.get_audio_features(token, track_id)
+get_token = spotify.get_token
+get_user_playlists = spotify.get_user_playlists
+get_playlist_tracks = spotify.get_playlist_tracks
