@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 import numpy as np
 import librosa
-from spotify_api import get_token, get_spotify_recommendations, get_valid_spotify_genre, search_tracks_by_genre
+from spotify_api import get_token, get_valid_spotify_genre, search_tracks_by_genre
 from auth_server import get_spotify_auth_code
 
 

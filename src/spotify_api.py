@@ -100,68 +100,6 @@ def search_tracks_by_genre(token, genre, min_popularity=50):
         return []
 
 
-def get_available_genre_seeds(token):
-    """Get list of available genre seeds from Spotify"""
-    url = "https://api.spotify.com/v1/recommendations/available-genre-seeds"
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    try:
-        response = get(url, headers=headers)
-        if response.status_code == 200:
-            return response.json().get('genres', [])
-        else:
-            print(f"Error getting genre seeds: {response.status_code}")
-            print(f"Response: {response.text}")
-            return []
-    except Exception as e:
-        print(f"Error getting genre seeds: {str(e)}")
-        return []
-
-
-def get_spotify_recommendations(token, genre):
-    """Get Spotify recommendations based on genre"""
-    url = "https://api.spotify.com/v1/recommendations"
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # Use hardcoded genres that we know work with Spotify
-    VALID_GENRES = {
-        'pop': 'pop',
-        'rock': 'rock',
-        'hip-hop': 'hip-hop',
-        'electronic': 'electronic',
-        'classical': 'classical',
-        'jazz': 'jazz',
-        'alternative': 'alternative'
-    }
-    
-    # Map input genre to valid Spotify genre
-    spotify_genre = VALID_GENRES.get(genre.lower(), 'pop')
-    print(f"Using genre seed: {spotify_genre}")
-    
-    params = {
-        "seed_genres": spotify_genre,
-        "limit": 10,
-        "market": "US",
-        "min_popularity": 50
-    }
-    
-    try:
-        response = get(url, headers=headers, params=params)
-        print(f"Recommendations API call status: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            tracks = data.get('tracks', [])
-            print(f"Found {len(tracks)} recommendations")
-            return tracks
-        else:
-            print(f"Error response: {response.text}")
-            return []
-            
-    except Exception as e:
-        print(f"Error getting recommendations: {str(e)}")
-        return []
-    
 def get_valid_spotify_genre(genre):
     """Map our genres to valid Spotify search terms"""
     genre_mapping = {
