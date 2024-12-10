@@ -1,91 +1,186 @@
-from dotenv import load_dotenv
+# src/spotify_api.py
+from requests import get, post
+import json
 import os
 import base64
-from requests import post, get
-import json
+from dotenv import load_dotenv
+import urllib.parse
+
 
 load_dotenv()
 
-class SpotifyAPI:
-    def __init__(self):
-        self.client_id = os.getenv("CLIENT_ID")
-        self.client_secret = os.getenv("CLIENT_SECRET")
-        
-        if self.client_id is None or self.client_secret is None:
-            raise ValueError("CLIENT_ID and CLIENT_SECRET must be set in the environment variables")
+def get_token(auth_code=None, redirect_uri=None):
+    """Get Spotify access token"""
+    client_id = os.getenv("CLIENT_ID")
+    client_secret = os.getenv("CLIENT_SECRET")
     
-    def get_token(self, auth_code=None, redirect_uri=None):
-        """Get Spotify access token using either client credentials or authorization code flow"""
-        auth_string = f"{self.client_id}:{self.client_secret}"
-        auth_bytes = auth_string.encode("utf-8")
-        auth_base64 = str(base64.b64encode(auth_bytes), "utf-8")
-        
-        url = "https://accounts.spotify.com/api/token"
-        headers = {
-            "Authorization": "Basic " + auth_base64,
-            "Content-Type": "application/x-www-form-urlencoded"
-        }
-        
-        if auth_code and redirect_uri:
-            data = {
-                "grant_type": "authorization_code",
-                "code": auth_code,
-                "redirect_uri": redirect_uri
-            }
-        else:
-            data = {"grant_type": "client_credentials"}
-
+    if not client_id or not client_secret:
+        raise ValueError("CLIENT_ID and CLIENT_SECRET must be set")
+    
+    auth_string = f"{client_id}:{client_secret}"
+    auth_bytes = auth_string.encode("utf-8")
+    auth_base64 = str(base64.b64encode(auth_bytes), "utf-8")
+    
+    url = "https://accounts.spotify.com/api/token"
+    headers = {
+        "Authorization": "Basic " + auth_base64,
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    
+    # Try client credentials flow first (simpler)
+    data = {"grant_type": "client_credentials"}
+    
+    try:
         result = post(url, headers=headers, data=data)
-        json_result = json.loads(result.content)
-        return json_result["access_token"]
-
-    def get_auth_header(self, token):
-        return {"Authorization": "Bearer " + token}
-
-    def get_user_playlists(self, token):
-        url = "https://api.spotify.com/v1/me/playlists"
-        headers = self.get_auth_header(token)
+        print(f"Token request status: {result.status_code}")
         
-        try:
-            result = get(url, headers=headers)
-            if result.status_code != 200:
-                print(f"Error fetching playlists: {result.status_code}")
-                print(f"Response: {result.text}")
-                return []
-                
-            json_result = json.loads(result.content)
-            if "items" not in json_result:
-                print("No playlists found")
-                return []
-                
-            # Filter out any None values or playlists without names
-            playlists = [
-                playlist for playlist in json_result["items"]
-                if playlist is not None and "name" in playlist
-            ]
+        if result.status_code == 200:
+            return result.json().get("access_token")
+    except Exception as e:
+        print(f"Error getting token: {str(e)}")
+    
+    return None
+
+def is_holiday_song(track):
+    """Check if a track is likely a holiday/Christmas song"""
+    holiday_keywords = {
+        'christmas', 'xmas', 'santa', 'rudolph', 'sleigh',
+        'silent night', 'jingle bells'
+    }
+    
+    title = track['name'].lower()
+    album_name = track.get('album', {}).get('name', '').lower()
+    
+    return any(keyword in title or keyword in album_name 
+              for keyword in holiday_keywords)
+def search_tracks_by_genre(token, genre, min_popularity=50):
+    """Search for tracks by genre using Spotify's search endpoint"""
+    url = "https://api.spotify.com/v1/search"
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    spotify_genre = get_valid_spotify_genre(genre)
+    print(f"Searching for tracks in genre: {spotify_genre}")
+    
+    params = {
+        "q": f"genre:{spotify_genre}",
+        "type": "track",
+        "market": "US",
+        "limit": 50  # Request more tracks to ensure we have enough after filtering
+    }
+    
+    try:
+        response = get(url, headers=headers, params=params)
+        print(f"Search API call status: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            all_tracks = data.get('tracks', {}).get('items', [])
             
-            return playlists
+            # Filter and sort tracks
+            filtered_tracks = []
+            for track in all_tracks:
+                if (track.get('popularity', 0) >= min_popularity and
+                    not is_holiday_song(track)):
+                    filtered_tracks.append(track)
             
-        except Exception as e:
-            print(f"Error processing playlists: {str(e)}")
+            # Sort by popularity
+            filtered_tracks.sort(key=lambda x: x.get('popularity', 0), reverse=True)
+            
+            # Take top 10
+            final_tracks = filtered_tracks[:10]
+            print(f"Found {len(final_tracks)} suitable tracks after filtering")
+            
+            return final_tracks
+        else:
+            print(f"Error response: {response.text}")
             return []
+            
+    except Exception as e:
+        print(f"Error searching tracks: {str(e)}")
+        return []
 
-    def get_playlist_tracks(self, token, playlist_id):
-        url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
-        headers = self.get_auth_header(token)
 
-        result = get(url, headers=headers)
-        json_result = json.loads(result.content)["items"]
+def get_available_genre_seeds(token):
+    """Get list of available genre seeds from Spotify"""
+    url = "https://api.spotify.com/v1/recommendations/available-genre-seeds"
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    try:
+        response = get(url, headers=headers)
+        if response.status_code == 200:
+            return response.json().get('genres', [])
+        else:
+            print(f"Error getting genre seeds: {response.status_code}")
+            print(f"Response: {response.text}")
+            return []
+    except Exception as e:
+        print(f"Error getting genre seeds: {str(e)}")
+        return []
+
+
+def get_spotify_recommendations(token, genre):
+    """Get Spotify recommendations based on genre"""
+    url = "https://api.spotify.com/v1/recommendations"
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Use hardcoded genres that we know work with Spotify
+    VALID_GENRES = {
+        'pop': 'pop',
+        'rock': 'rock',
+        'hip-hop': 'hip-hop',
+        'electronic': 'electronic',
+        'classical': 'classical',
+        'jazz': 'jazz',
+        'alternative': 'alternative'
+    }
+    
+    # Map input genre to valid Spotify genre
+    spotify_genre = VALID_GENRES.get(genre.lower(), 'pop')
+    print(f"Using genre seed: {spotify_genre}")
+    
+    params = {
+        "seed_genres": spotify_genre,
+        "limit": 10,
+        "market": "US",
+        "min_popularity": 50
+    }
+    
+    try:
+        response = get(url, headers=headers, params=params)
+        print(f"Recommendations API call status: {response.status_code}")
         
-        tracks = []
-        for item in json_result:
-            if item["track"]:
-                tracks.append(item["track"])
-        
-        return tracks
+        if response.status_code == 200:
+            data = response.json()
+            tracks = data.get('tracks', [])
+            print(f"Found {len(tracks)} recommendations")
+            return tracks
+        else:
+            print(f"Error response: {response.text}")
+            return []
+            
+    except Exception as e:
+        print(f"Error getting recommendations: {str(e)}")
+        return []
+    
+def get_valid_spotify_genre(genre):
+    """Map our genres to valid Spotify search terms"""
+    genre_mapping = {
+        'pop': 'pop',
+        'rock': 'rock',
+        'electronic': 'dance electronic',
+        'hip-hop': 'hip hop',
+        'classical': 'classical',
+        'jazz': 'jazz',
+        'blues': 'blues',
+        'alternative': 'alternative',
+        'indie': 'indie',
+        'metal': 'metal'
+    }
 
-# Create instance and export functions
-spotify = SpotifyAPI()
-get_token = spotify.get_token
-get_user_playlists = spotify.get_user_playlists
-get_playlist_tracks = spotify.get_playlist_tracks
+    mapped_genre = genre_mapping.get(genre.lower(), 'pop')
+    print(f"Mapped '{genre}' to search term: '{mapped_genre}'")
+    return mapped_genre
+
+
+# Export the new function instead of the old one
+__all__ = ['get_token', 'search_tracks_by_genre', 'get_valid_spotify_genre']

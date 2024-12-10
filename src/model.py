@@ -1,7 +1,9 @@
+# genre_classifier.py
 import numpy as np
 import operator
 import pickle
 import random
+import os
 
 class KNNClassifier:
     def __init__(self, k=5):
@@ -80,3 +82,13 @@ class KNNClassifier:
 
         correct = sum(1 for i in range(len(test_set)) if test_set[i][2] == predictions[i])
         return correct / len(test_set)
+
+def create_genre_mapping(directory):
+    """Create a mapping between numeric labels and genre names."""
+    results = {}
+    for i, folder in enumerate(os.listdir(directory), 1):
+        results[i] = folder
+    return results
+
+# Make sure to export KNNClassifier
+__all__ = ['KNNClassifier', 'create_genre_mapping']

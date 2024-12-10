@@ -1,7 +1,8 @@
+# src/auth_server.py
 import http.server
 import socketserver
 import webbrowser
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 import threading
 import queue
 
@@ -11,7 +12,6 @@ class OAuthHandler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*args, **kwargs)
 
     def do_GET(self):
-        """Handle the callback from Spotify"""
         query_components = parse_qs(urlparse(self.path).query)
         
         self.send_response(200)
@@ -42,32 +42,34 @@ def get_spotify_auth_code(client_id):
     PORT = 8888
     auth_code_queue = queue.Queue()
     
-    # Create handler with access to the queue
     handler = lambda *args, **kwargs: OAuthHandler(auth_code_queue, *args, **kwargs)
     
-    # Start server
     server = socketserver.TCPServer(("", PORT), handler)
     server_thread = threading.Thread(target=server.serve_forever)
     server_thread.daemon = True
     server_thread.start()
     
-    # Construct and open the authorization URL
     redirect_uri = f"http://localhost:{PORT}/callback"
+    
+    # Updated scopes for recommendations
     scopes = [
-        "user-library-read",
         "user-read-private",
+        "user-read-email",
+        "user-top-read",
         "playlist-read-private",
-        "playlist-read-collaborative"
+        "playlist-read-collaborative",
+        "streaming"
     ]
     
     auth_url = (
         "https://accounts.spotify.com/authorize"
         f"?client_id={client_id}"
         "&response_type=code"
-        f"&redirect_uri={redirect_uri}"
-        f"&scope={' '.join(scopes)}"
+        f"&redirect_uri={quote(redirect_uri)}"
+        f"&scope={quote(' '.join(scopes))}"
     )
     
+    print(f"Opening browser for authentication...")
     webbrowser.open(auth_url)
     
     try:

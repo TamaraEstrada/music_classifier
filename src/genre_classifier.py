@@ -1,5 +1,7 @@
 from requests import get
 import json
+from .model import KNNClassifier
+__all__ = ['KNNClassifier']
 
 def get_track_info(token, track_id):
     """Get basic track information including artist details"""
